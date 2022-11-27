@@ -6,14 +6,12 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1.2"
-
 public Plugin myinfo =
 {
 	name = "RNGFix",
 	author = "rio",
 	description = "Fixes physics bugs in movement game modes",
-	version = PLUGIN_VERSION,
+	version = "1.1.2",
 	url = "https://github.com/jason-e/rngfix"
 }
 
