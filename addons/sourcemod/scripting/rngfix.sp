@@ -297,12 +297,7 @@ void HookTrigger(int entity, const char[] classname)
 	{
 		SDKHook(entity, SDKHook_StartTouchPost, Hook_TriggerStartTouch);
 		SDKHook(entity, SDKHook_EndTouchPost, Hook_TriggerEndTouch);
-
-		// Fire the forward
-		Call_StartForward(g_hOnTriggerDetected);
-		Call_PushCell(entity);
-		Call_PushString(classname);
-		Call_Finish();
+		Forward_OnTriggerDetected(entity, classname);
 	}
 
 	if (StrContains(classname, "trigger_teleport") != -1)
@@ -329,12 +324,7 @@ public Action Hook_TriggerStartTouch(int entity, int other)
 	{
 		g_bTouchingTrigger[other][entity] = true;
 		DebugMsg(other, "StartTouch %i", entity);
-
-		// Fire the forward
-		Call_StartForward(g_hOnTriggerStartTouch);
-		Call_PushCell(entity);
-		Call_PushCell(other);
-		Call_Finish();
+		Forward_OnTriggerStartTouch(entity, other);
 	}
 
 	return Plugin_Continue;
@@ -379,12 +369,7 @@ public void Hook_TriggerTeleportTouchPost(int entity, int other)
 	g_iLastMapTeleportTick[other] = g_iTick[other];
 
 	DebugMsg(other, "Triggered teleport %i", entity);
-
-	// Fire the forward
-	Call_StartForward(g_hOnTriggerTeleportTouchPost);
-	Call_PushCell(entity);
-	Call_PushCell(other);
-	Call_Finish();
+	Forward_OnTriggerTeleportEndTouch(entity, other);
 }
 
 public Action Hook_TriggerEndTouch(int entity, int other)
@@ -393,12 +378,7 @@ public Action Hook_TriggerEndTouch(int entity, int other)
 	{
 	 	g_bTouchingTrigger[other][entity] = false;
 	 	DebugMsg(other, "EndTouch %i", entity);
-
-		// Fire the forward
-		Call_StartForward(g_hOnTriggerEndTouch);
-		Call_PushCell(entity);
-		Call_PushCell(other);
-		Call_Finish();
+		Forward_OnTriggerEndTouch(entity, other);
 	}
 	return Plugin_Continue;
 }
@@ -1325,4 +1305,36 @@ bool TracePlayerBBoxForGround(const float origin[3], const float originBelow[3],
 	}
 
 	return false;
+}
+
+void Forward_OnTriggerDetected(int entity, const char[] classname)
+{
+	Call_StartForward(g_hOnTriggerDetected);
+	Call_PushCell(entity);
+	Call_PushString(classname);
+	Call_Finish();
+}
+
+void Forward_OnTriggerStartTouch(int entity, int other)
+{
+	Call_StartForward(g_hOnTriggerStartTouch);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
+}
+
+void Forward_OnTriggerEndTouch(int entity, int other)
+{
+	Call_StartForward(g_hOnTriggerEndTouch);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
+}
+
+void Forward_OnTriggerTeleportEndTouch(int entity, int other)
+{
+	Call_StartForward(g_hOnTriggerTeleportTouchPost);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
 }
