@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "RNGFix",
 	author = "rio",
 	description = "Fixes physics bugs in movement game modes",
-	version = "1.1.2",
+	version = "1.1.3",
 	url = "https://github.com/jason-e/rngfix"
 }
 
@@ -84,6 +84,12 @@ Handle g_hProcessMovementHookPre;
 Address g_IServerGameEnts;
 Handle g_hMarkEntitiesAsTouching;
 
+// API
+Handle g_hOnTriggerDetected;
+Handle g_hOnTriggerStartTouch;
+Handle g_hOnTriggerEndTouch;
+Handle g_hOnTriggerTeleportTouchPost;
+
 bool g_bIsSurfMap;
 
 bool g_bLateLoad;
@@ -112,6 +118,13 @@ void DebugLaser(int client, const float p1[3], const float p2[3], float life, fl
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
    g_bLateLoad = late;
+   RegPluginLibrary("rngfix");
+
+   g_hOnTriggerDetected = CreateGlobalForward("FixRNG_OnTriggerDetected", ET_Ignore, Param_Cell, Param_String);
+   g_hOnTriggerStartTouch = CreateGlobalForward("FixRNG_OnTriggerStartTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerEndTouch = CreateGlobalForward("FixRNG_OnTriggerEndTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerTeleportTouchPost = CreateGlobalForward("FixRNG_OnTriggerTeleportTouchPost", ET_Ignore, Param_Cell, Param_Cell);
+
    return APLRes_Success;
 }
 
@@ -155,7 +168,7 @@ public void OnPluginStart()
 
 	g_cvDebug = CreateConVar("rngfix_debug", "0", "1 = Enable debug messages. 2 = Enable debug messages and lasers.", _, true, 0.0, true, 2.0);
 
-	AutoExecConfig();
+	AutoExecConfig(true);
 
 	g_cvMaxVelocity   = FindConVar("sv_maxvelocity");
 	g_cvGravity 	  = FindConVar("sv_gravity");
@@ -284,6 +297,12 @@ void HookTrigger(int entity, const char[] classname)
 	{
 		SDKHook(entity, SDKHook_StartTouchPost, Hook_TriggerStartTouch);
 		SDKHook(entity, SDKHook_EndTouchPost, Hook_TriggerEndTouch);
+
+		// Fire the forward
+		Call_StartForward(g_hOnTriggerDetected);
+		Call_PushCell(entity);
+		Call_PushString(classname);
+		Call_Finish();
 	}
 
 	if (StrContains(classname, "trigger_teleport") != -1)
@@ -310,6 +329,12 @@ public Action Hook_TriggerStartTouch(int entity, int other)
 	{
 		g_bTouchingTrigger[other][entity] = true;
 		DebugMsg(other, "StartTouch %i", entity);
+
+		// Fire the forward
+		Call_StartForward(g_hOnTriggerStartTouch);
+		Call_PushCell(entity);
+		Call_PushCell(other);
+		Call_Finish();
 	}
 
 	return Plugin_Continue;
@@ -354,6 +379,12 @@ public void Hook_TriggerTeleportTouchPost(int entity, int other)
 	g_iLastMapTeleportTick[other] = g_iTick[other];
 
 	DebugMsg(other, "Triggered teleport %i", entity);
+
+	// Fire the forward
+	Call_StartForward(g_hOnTriggerTeleportTouchPost);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
 }
 
 public Action Hook_TriggerEndTouch(int entity, int other)
@@ -362,6 +393,12 @@ public Action Hook_TriggerEndTouch(int entity, int other)
 	{
 	 	g_bTouchingTrigger[other][entity] = false;
 	 	DebugMsg(other, "EndTouch %i", entity);
+
+		// Fire the forward
+		Call_StartForward(g_hOnTriggerEndTouch);
+		Call_PushCell(entity);
+		Call_PushCell(other);
+		Call_Finish();
 	}
 	return Plugin_Continue;
 }
