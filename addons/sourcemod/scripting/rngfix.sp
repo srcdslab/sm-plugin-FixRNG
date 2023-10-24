@@ -120,10 +120,10 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
    g_bLateLoad = late;
    RegPluginLibrary("rngfix");
 
-   g_hOnTriggerDetected = CreateGlobalForward("FixRNG_OnTriggerDetected", ET_Ignore, Param_Cell, Param_String);
-   g_hOnTriggerStartTouch = CreateGlobalForward("FixRNG_OnTriggerStartTouch", ET_Ignore, Param_Cell, Param_Cell);
-   g_hOnTriggerEndTouch = CreateGlobalForward("FixRNG_OnTriggerEndTouch", ET_Ignore, Param_Cell, Param_Cell);
-   g_hOnTriggerTeleportTouchPost = CreateGlobalForward("FixRNG_OnTriggerTeleportTouchPost", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerDetected = CreateGlobalForward("RNGFix_OnTriggerDetected", ET_Ignore, Param_Cell, Param_String);
+   g_hOnTriggerStartTouch = CreateGlobalForward("RNGFix_OnTriggerStartTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerEndTouch = CreateGlobalForward("RNGFix_OnTriggerEndTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerTeleportTouchPost = CreateGlobalForward("RNGFix_OnTriggerTeleportTouchPost", ET_Ignore, Param_Cell, Param_Cell);
 
    return APLRes_Success;
 }

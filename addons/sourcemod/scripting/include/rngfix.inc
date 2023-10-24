@@ -10,7 +10,7 @@
  * @param classname     	Clasname
  * @noreturn
  */
-forward void FixRNG_OnTriggerDetected(int entity, const char[] classname);
+forward void RNGFix_OnTriggerDetected(int entity, const char[] classname);
 
 /**
  * Called when trigger_* on StartTouch.
@@ -19,7 +19,7 @@ forward void FixRNG_OnTriggerDetected(int entity, const char[] classname);
  * @param other     	    Activator
  * @noreturn
  */
-forward void FixRNG_OnTriggerStartTouch(int entity, int other);
+forward void RNGFix_OnTriggerStartTouch(int entity, int other);
 
 /**
  * Called when trigger_* on EndTouch.
@@ -28,7 +28,7 @@ forward void FixRNG_OnTriggerStartTouch(int entity, int other);
  * @param other     	    Activator
  * @noreturn
  */
-forward void FixRNG_OnTriggerEndTouch(int entity, int other);
+forward void RNGFix_OnTriggerEndTouch(int entity, int other);
 
 /**
  * Called after trigger_teleport is touched.
@@ -37,7 +37,7 @@ forward void FixRNG_OnTriggerEndTouch(int entity, int other);
  * @param other     	    Activator
  * @noreturn
  */
-forward void FixRNG_OnTriggerTeleportTouchPost(int entity, int other);
+forward void RNGFix_OnTriggerTeleportTouchPost(int entity, int other);
 
 public SharedPlugin __pl_rngfix =
 {
