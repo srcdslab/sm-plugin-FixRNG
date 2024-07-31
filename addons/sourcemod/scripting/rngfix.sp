@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "RNGFix",
 	author = "rio",
 	description = "Fixes physics bugs in movement game modes",
-	version = "1.1.2",
+	version = "1.1.4",
 	url = "https://github.com/jason-e/rngfix"
 }
 
@@ -84,6 +84,12 @@ Handle g_hProcessMovementHookPre;
 Address g_IServerGameEnts;
 Handle g_hMarkEntitiesAsTouching;
 
+// API
+Handle g_hOnTriggerDetected;
+Handle g_hOnTriggerStartTouch;
+Handle g_hOnTriggerEndTouch;
+Handle g_hOnTriggerTeleportTouchPost;
+
 bool g_bIsSurfMap;
 
 bool g_bLateLoad;
@@ -112,6 +118,13 @@ void DebugLaser(int client, const float p1[3], const float p2[3], float life, fl
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
    g_bLateLoad = late;
+   RegPluginLibrary("rngfix");
+
+   g_hOnTriggerDetected = CreateGlobalForward("RNGFix_OnTriggerDetected", ET_Ignore, Param_Cell, Param_String);
+   g_hOnTriggerStartTouch = CreateGlobalForward("RNGFix_OnTriggerStartTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerEndTouch = CreateGlobalForward("RNGFix_OnTriggerEndTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerTeleportTouchPost = CreateGlobalForward("RNGFix_OnTriggerTeleportTouchPost", ET_Ignore, Param_Cell, Param_Cell);
+
    return APLRes_Success;
 }
 
@@ -119,7 +132,7 @@ public void OnPluginStart()
 {
 	EngineVersion engine = GetEngineVersion();
 
-	if (engine != Engine_CSGO && engine != Engine_CSS)
+	if (engine != Engine_CSS)
 	{
 		SetFailState("Game is not supported");
 	}
@@ -127,20 +140,9 @@ public void OnPluginStart()
 	g_vecMins 		  = view_as<float>({-16.0, -16.0, 0.0});
 	g_vecMaxsUnducked = view_as<float>({16.0, 16.0, 0.0});
 	g_vecMaxsDucked   = view_as<float>({16.0, 16.0, 0.0});
-
-	switch (engine)
-	{
-		case Engine_CSGO:
-		{
-			g_vecMaxsUnducked[2] = 72.0;
-			g_vecMaxsDucked[2]   = 64.0;
-		}
-		case Engine_CSS:
-		{
-			g_vecMaxsUnducked[2] = 62.0;
-			g_vecMaxsDucked[2]   = 45.0;
-		}
-	}
+	
+	g_vecMaxsUnducked[2] = 62.0;
+	g_vecMaxsDucked[2]   = 45.0;
 
 	g_flDuckDelta = (g_vecMaxsUnducked[2]-g_vecMaxsDucked[2]) / 2;
 
@@ -155,7 +157,7 @@ public void OnPluginStart()
 
 	g_cvDebug = CreateConVar("rngfix_debug", "0", "1 = Enable debug messages. 2 = Enable debug messages and lasers.", _, true, 0.0, true, 2.0);
 
-	AutoExecConfig();
+	AutoExecConfig(true);
 
 	g_cvMaxVelocity   = FindConVar("sv_maxvelocity");
 	g_cvGravity 	  = FindConVar("sv_gravity");
@@ -284,6 +286,7 @@ void HookTrigger(int entity, const char[] classname)
 	{
 		SDKHook(entity, SDKHook_StartTouchPost, Hook_TriggerStartTouch);
 		SDKHook(entity, SDKHook_EndTouchPost, Hook_TriggerEndTouch);
+		Forward_OnTriggerDetected(entity, classname);
 	}
 
 	if (StrContains(classname, "trigger_teleport") != -1)
@@ -310,6 +313,7 @@ public Action Hook_TriggerStartTouch(int entity, int other)
 	{
 		g_bTouchingTrigger[other][entity] = true;
 		DebugMsg(other, "StartTouch %i", entity);
+		Forward_OnTriggerStartTouch(entity, other);
 	}
 
 	return Plugin_Continue;
@@ -354,6 +358,7 @@ public void Hook_TriggerTeleportTouchPost(int entity, int other)
 	g_iLastMapTeleportTick[other] = g_iTick[other];
 
 	DebugMsg(other, "Triggered teleport %i", entity);
+	Forward_OnTriggerTeleportEndTouch(entity, other);
 }
 
 public Action Hook_TriggerEndTouch(int entity, int other)
@@ -362,6 +367,7 @@ public Action Hook_TriggerEndTouch(int entity, int other)
 	{
 	 	g_bTouchingTrigger[other][entity] = false;
 	 	DebugMsg(other, "EndTouch %i", entity);
+		Forward_OnTriggerEndTouch(entity, other);
 	}
 	return Plugin_Continue;
 }
@@ -563,7 +569,7 @@ void PreventCollision(int client, Handle hParams, const float origin[3], const f
 
 	// Since the MoveData for this tick has already been filled and is about to be used, we need
 	// to modify it directly instead of changing the player entity's actual position (such as with TeleportEntity).
-	DHookSetParamObjectPtrVarVector(hParams, 2, GetEngineVersion() == Engine_CSGO ? 172 : 152, ObjectValueType_Vector, newOrigin);
+	DHookSetParamObjectPtrVarVector(hParams, 2, 152, ObjectValueType_Vector, newOrigin);
 
 	DebugLaser(client, origin, newOrigin, 15.0, 0.5, g_color2);
 
@@ -662,7 +668,7 @@ void RunPreTickChecks(int client, Handle hParams)
 	GetEntPropVector(client, Prop_Data, "m_vecBaseVelocity", baseVelocity);
 
 	float origin[3];
-	DHookGetParamObjectPtrVarVector(hParams, 2, GetEngineVersion() == Engine_CSGO ? 172 : 152, ObjectValueType_Vector, origin);
+	DHookGetParamObjectPtrVarVector(hParams, 2, 152, ObjectValueType_Vector, origin);
 
 	float nextOrigin[3], mins[3], maxs[3];
 
@@ -1288,4 +1294,36 @@ bool TracePlayerBBoxForGround(const float origin[3], const float originBelow[3],
 	}
 
 	return false;
+}
+
+void Forward_OnTriggerDetected(int entity, const char[] classname)
+{
+	Call_StartForward(g_hOnTriggerDetected);
+	Call_PushCell(entity);
+	Call_PushString(classname);
+	Call_Finish();
+}
+
+void Forward_OnTriggerStartTouch(int entity, int other)
+{
+	Call_StartForward(g_hOnTriggerStartTouch);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
+}
+
+void Forward_OnTriggerEndTouch(int entity, int other)
+{
+	Call_StartForward(g_hOnTriggerEndTouch);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
+}
+
+void Forward_OnTriggerTeleportEndTouch(int entity, int other)
+{
+	Call_StartForward(g_hOnTriggerTeleportTouchPost);
+	Call_PushCell(entity);
+	Call_PushCell(other);
+	Call_Finish();
 }
