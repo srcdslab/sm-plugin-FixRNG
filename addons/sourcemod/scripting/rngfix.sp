@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "RNGFix",
 	author = "rio",
 	description = "Fixes physics bugs in movement game modes",
-	version = "1.1.4",
+	version = "1.1.5",
 	url = "https://github.com/jason-e/rngfix"
 }
 
@@ -20,13 +20,7 @@ public Plugin myinfo =
 #define NON_JUMP_VELOCITY 140.0 			// Maximum Z velocity you are allowed to have and still land
 #define MIN_STANDABLE_ZNRM 0.7				// Minimum surface normal Z component of a walkable surface
 #define AIR_SPEED_CAP 30.0					// Constant used to limit air acceleration
-#define DUCK_MIN_DUCKSPEED 1.5  			// Minimum duckspeed to start ducking
 #define DEFAULT_JUMP_IMPULSE 301.99337741 	// sqrt(2 * 57.0 units * 800.0 u/s^2)
-
-float g_vecMins[3];
-float g_vecMaxsUnducked[3];
-float g_vecMaxsDucked[3];
-float g_flDuckDelta;
 
 int g_iTick[MAXPLAYERS+1];
 float g_flFrameTime[MAXPLAYERS+1];
@@ -71,13 +65,6 @@ ConVar g_cvDebug;
 ConVar g_cvMaxVelocity;
 ConVar g_cvGravity;
 ConVar g_cvAirAccelerate;
-
-// In CSS and CSGO but apparently not used in CSS
-ConVar g_cvTimeBetweenDucks;
-
-// CSGO-only
-ConVar g_cvJumpImpulse;
-ConVar g_cvAutoBunnyHopping;
 
 Handle g_hPassesTriggerFilters;
 Handle g_hProcessMovementHookPre;
@@ -137,21 +124,12 @@ public void OnPluginStart()
 		SetFailState("Game is not supported");
 	}
 
-	g_vecMins 		  = view_as<float>({-16.0, -16.0, 0.0});
-	g_vecMaxsUnducked = view_as<float>({16.0, 16.0, 0.0});
-	g_vecMaxsDucked   = view_as<float>({16.0, 16.0, 0.0});
-	
-	g_vecMaxsUnducked[2] = 62.0;
-	g_vecMaxsDucked[2]   = 45.0;
-
-	g_flDuckDelta = (g_vecMaxsUnducked[2]-g_vecMaxsDucked[2]) / 2;
-
 	g_cvDownhill 	= CreateConVar("rngfix_downhill", "1", "Enable downhill incline fix.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvUphill 		= CreateConVar("rngfix_uphill", "1", "Enable uphill incline fix. Set to -1 to normalize effects not in the player's favor (not recommended).", FCVAR_NOTIFY, true, -1.0, true, 1.0);
 	g_cvEdge 		= CreateConVar("rngfix_edge", "1", "Enable edgebug fix.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvTriggerjump = CreateConVar("rngfix_triggerjump", "1", "Enable trigger jump fix.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvTelehop 	= CreateConVar("rngfix_telehop", "1", "Enable telehop fix.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvStairs		= CreateConVar("rngfix_stairs", "1", "Enable stair slide fix (surf only). You must have Movement Unlocker for sliding to work on CSGO.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_cvStairs		= CreateConVar("rngfix_stairs", "1", "Enable stair slide fix (surf only).", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
 	g_cvUseOldSlopefixLogic = CreateConVar("rngfix_useoldslopefixlogic", "0", "Old Slopefix had some logic errors that could cause double boosts. Enable this on a per-map basis to retain old behavior. (NOT RECOMMENDED)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 
@@ -167,11 +145,6 @@ public void OnPluginStart()
 	{
 		SetFailState("Could not find all ConVars");
 	}
-
-	// Not required
-	g_cvTimeBetweenDucks = FindConVar("sv_timebetweenducks");
-	g_cvJumpImpulse		 = FindConVar("sv_jump_impulse");
-	g_cvAutoBunnyHopping = FindConVar("sv_autobunnyhopping");
 
 	Handle gamedataConf = LoadGameConfigFile("rngfix.games");
 	if (gamedataConf == null) SetFailState("Failed to load rngfix gamedata");
@@ -377,73 +350,9 @@ public bool PlayerFilter(int entity, int mask)
 	return !(1 <= entity <= MaxClients);
 }
 
-float GetJumpImpulse()
-{
-	if (g_cvJumpImpulse != null)
-	{
-		return g_cvJumpImpulse.FloatValue;
-	}
-	else
-	{
-		return DEFAULT_JUMP_IMPULSE;
-	}
-}
-
-bool IsDuckCoolingDown(int client)
-{
-	// TODO Is this stuff in MoveData?
-
-	// Ducking is prevented if the last switch to a ducked state from an unducked state is sooner than sv_timebetweenducks ago.
-	// Note: This cooldown is based on client's curtime (GetGameTime() in this context) and thus is unaffected by m_flLaggedMovementValue.
-	if (g_cvTimeBetweenDucks != null && HasEntProp(client, Prop_Data, "m_flLastDuckTime"))
-	{
-		if (GetGameTime() - GetEntPropFloat(client, Prop_Data, "m_flLastDuckTime") < g_cvTimeBetweenDucks.FloatValue) return true;
-	}
-
-	// m_flDuckSpeed is decreased by 2.0 to a minimum of 0.0 every time the duck key is pressed OR released.
-	// It recovers at a rate of 3.0 * m_flLaggedMovementValue per second and caps at 8.0.
-	// Switching to a ducked state from an unducked state is prevented if it is less than 1.5.
-	if (HasEntProp(client, Prop_Data, "m_flDuckSpeed"))
-	{
-		if (GetEntPropFloat(client, Prop_Data, "m_flDuckSpeed") < DUCK_MIN_DUCKSPEED) return true;
-	}
-
-	return false;
-}
-
-void Duck(int client, float origin[3], float mins[3], float maxs[3])
-{
-	bool ducking = GetEntityFlags(client) & FL_DUCKING != 0;
-
-	bool nextDucking = ducking;
-
-	if (g_iButtons[client] & IN_DUCK != 0 && !ducking)
-	{
-		if (!IsDuckCoolingDown(client))
-		{
-			origin[2] += g_flDuckDelta;
-			nextDucking = true;
-		}
-	}
-	else if (g_iButtons[client] & IN_DUCK == 0 && ducking)
-	{
-		origin[2] -= g_flDuckDelta;
-
-		TR_TraceHullFilter(origin, origin, g_vecMins, g_vecMaxsUnducked, MASK_PLAYERSOLID, PlayerFilter);
-
-		// Cannot unduck in air, not enough room
-		if (TR_DidHit()) origin[2] += g_flDuckDelta;
-		else nextDucking = false;
-	}
-
-	mins = g_vecMins;
-	maxs = nextDucking ? g_vecMaxsDucked : g_vecMaxsUnducked;
-}
-
 bool CanJump(int client)
 {
 	if (g_iButtons[client] & IN_JUMP == 0) return false;
-	if (g_iOldButtons[client] & IN_JUMP != 0 && !(g_cvAutoBunnyHopping != null && g_cvAutoBunnyHopping.BoolValue)) return false;
 
 	return true;
 }
@@ -462,11 +371,11 @@ void CheckJumpButton(int client, float velocity[3])
 	// This conditional is why jumping while crouched jumps higher! Bad!
 	if (GetEntProp(client, Prop_Data, "m_bDucking") != 0 || GetEntityFlags(client) & FL_DUCKING != 0)
 	{
-		velocity[2] = GetJumpImpulse();
+		velocity[2] = DEFAULT_JUMP_IMPULSE;
 	}
 	else
 	{
-		velocity[2] += GetJumpImpulse();
+		velocity[2] += DEFAULT_JUMP_IMPULSE;
 	}
 
 	// Jumping does an extra half tick of gravity! Bad!
@@ -675,8 +584,6 @@ void RunPreTickChecks(int client, Handle hParams)
 	nextOrigin = origin;
 
 	// These roughly replicate the behavior of their equivalent CGameMovement functions.
-
-	Duck(client, nextOrigin, mins, maxs);
 
 	StartGravity(client, velocity);
 
