@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "RNGFix",
 	author = "rio",
 	description = "Fixes physics bugs in movement game modes",
-	version = "1.1.4",
+	version = "1.2.0",
 	url = "https://github.com/jason-e/rngfix"
 }
 
