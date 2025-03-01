@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "RNGFix",
 	author = "rio",
 	description = "Fixes physics bugs in movement game modes",
-	version = "1.1.4",
+	version = "1.1.5",
 	url = "https://github.com/jason-e/rngfix"
 }
 
@@ -72,11 +72,8 @@ ConVar g_cvMaxVelocity;
 ConVar g_cvGravity;
 ConVar g_cvAirAccelerate;
 
-// In CSS and CSGO but apparently not used in CSS
+// In CSS and CSGO
 ConVar g_cvTimeBetweenDucks;
-
-// CSGO-only
-ConVar g_cvJumpImpulse;
 ConVar g_cvAutoBunnyHopping;
 
 Handle g_hPassesTriggerFilters;
@@ -89,6 +86,12 @@ Handle g_hOnTriggerDetected;
 Handle g_hOnTriggerStartTouch;
 Handle g_hOnTriggerEndTouch;
 Handle g_hOnTriggerTeleportTouchPost;
+
+int g_iCMoveData_ForwardMove;
+int g_iCMoveData_SideMove;
+int g_iCMoveData_MaxSpeed;
+int g_iCMoveData_Velocity;
+int g_iCMoveData_Origin;
 
 bool g_bIsSurfMap;
 
@@ -140,7 +143,7 @@ public void OnPluginStart()
 	g_vecMins 		  = view_as<float>({-16.0, -16.0, 0.0});
 	g_vecMaxsUnducked = view_as<float>({16.0, 16.0, 0.0});
 	g_vecMaxsDucked   = view_as<float>({16.0, 16.0, 0.0});
-	
+
 	g_vecMaxsUnducked[2] = 62.0;
 	g_vecMaxsDucked[2]   = 45.0;
 
@@ -170,7 +173,6 @@ public void OnPluginStart()
 
 	// Not required
 	g_cvTimeBetweenDucks = FindConVar("sv_timebetweenducks");
-	g_cvJumpImpulse		 = FindConVar("sv_jump_impulse");
 	g_cvAutoBunnyHopping = FindConVar("sv_autobunnyhopping");
 
 	Handle gamedataConf = LoadGameConfigFile("rngfix.games");
@@ -222,6 +224,27 @@ public void OnPluginStart()
 	DHookAddParam(g_hProcessMovementHookPre, HookParamType_CBaseEntity);
 	DHookAddParam(g_hProcessMovementHookPre, HookParamType_ObjectPtr);
 	DHookRaw(g_hProcessMovementHookPre, false, IGameMovement);
+
+	if ((g_iCMoveData_ForwardMove = GameConfGetOffset(gamedataConf, "CMoveData::m_flForwardMove")) == -1)
+	{
+		SetFailState("Failed to get CMoveData::m_flForwardMove");
+	}
+	if ((g_iCMoveData_SideMove = GameConfGetOffset(gamedataConf, "CMoveData::m_flSideMove")) == -1)
+	{
+		SetFailState("Failed to get CMoveData::m_flSideMove");
+	}
+	if ((g_iCMoveData_MaxSpeed = GameConfGetOffset(gamedataConf, "CMoveData::m_flMaxSpeed")) == -1)
+	{
+		SetFailState("Failed to get CMoveData::m_flMaxSpeed");
+	}
+	if ((g_iCMoveData_Velocity = GameConfGetOffset(gamedataConf, "CMoveData::m_vecVelocity")) == -1)
+	{
+		SetFailState("Failed to get CMoveData::m_vecVelocity");
+	}
+	if ((g_iCMoveData_Origin = GameConfGetOffset(gamedataConf, "CMoveData::m_vecAbsOrigin")) == -1)
+	{
+		SetFailState("Failed to get CMoveData::m_vecAbsOrigin");
+	}
 
 	// MarkEntitiesAsTouching
 	if (!GameConfGetKeyValue(gamedataConf, "IServerGameEnts", interfaceName, sizeof(interfaceName)))
@@ -333,7 +356,7 @@ bool NameExists(const char[] targetname)
 		if (!IsValidEntity(entity)) continue;
 		if (GetEntPropString(entity, Prop_Data, "m_iName", targetname2, sizeof(targetname2)) == 0) continue;
 
-		if (StrEqual(targetname, targetname2)) return true;
+		if (StrEqual(targetname, targetname2, false)) return true;
 	}
 
 	return false;
@@ -375,18 +398,6 @@ public Action Hook_TriggerEndTouch(int entity, int other)
 public bool PlayerFilter(int entity, int mask)
 {
 	return !(1 <= entity <= MaxClients);
-}
-
-float GetJumpImpulse()
-{
-	if (g_cvJumpImpulse != null)
-	{
-		return g_cvJumpImpulse.FloatValue;
-	}
-	else
-	{
-		return DEFAULT_JUMP_IMPULSE;
-	}
 }
 
 bool IsDuckCoolingDown(int client)
@@ -462,11 +473,11 @@ void CheckJumpButton(int client, float velocity[3])
 	// This conditional is why jumping while crouched jumps higher! Bad!
 	if (GetEntProp(client, Prop_Data, "m_bDucking") != 0 || GetEntityFlags(client) & FL_DUCKING != 0)
 	{
-		velocity[2] = GetJumpImpulse();
+		velocity[2] = DEFAULT_JUMP_IMPULSE;
 	}
 	else
 	{
-		velocity[2] += GetJumpImpulse();
+		velocity[2] += DEFAULT_JUMP_IMPULSE;
 	}
 
 	// Jumping does an extra half tick of gravity! Bad!
@@ -490,7 +501,7 @@ void AirAccelerate(int client, float velocity[3], Handle hParams)
 	for (int i = 0; i < 2; i++)	wishvel[i] = fore[i] * g_vVel[client][0] + side[i] * g_vVel[client][1];
 
 	float wishspeed = NormalizeVector(wishvel, wishdir);
-	float m_flMaxSpeed = DHookGetParamObjectPtrVar(hParams, 2, 56, ObjectValueType_Float);
+	float m_flMaxSpeed = DHookGetParamObjectPtrVar(hParams, 2, g_iCMoveData_MaxSpeed, ObjectValueType_Float);
 	if (wishspeed > m_flMaxSpeed && m_flMaxSpeed != 0.0) wishspeed = m_flMaxSpeed;
 
 	if (wishspeed)
@@ -569,7 +580,7 @@ void PreventCollision(int client, Handle hParams, const float origin[3], const f
 
 	// Since the MoveData for this tick has already been filled and is about to be used, we need
 	// to modify it directly instead of changing the player entity's actual position (such as with TeleportEntity).
-	DHookSetParamObjectPtrVarVector(hParams, 2, 152, ObjectValueType_Vector, newOrigin);
+	DHookSetParamObjectPtrVarVector(hParams, 2, g_iCMoveData_Origin, ObjectValueType_Vector, newOrigin);
 
 	DebugLaser(client, origin, newOrigin, 15.0, 0.5, g_color2);
 
@@ -657,18 +668,20 @@ void RunPreTickChecks(int client, Handle hParams)
 
 	g_iButtons[client] = DHookGetParamObjectPtrVar(hParams, 2, 36, ObjectValueType_Int);
 	g_iOldButtons[client] = DHookGetParamObjectPtrVar(hParams, 2, 40, ObjectValueType_Int);
-	DHookGetParamObjectPtrVarVector(hParams, 2, 44, ObjectValueType_Vector, g_vVel[client]);
+	g_vVel[client][0] = DHookGetParamObjectPtrVar(hParams, 2, g_iCMoveData_ForwardMove, ObjectValueType_Float);
+	g_vVel[client][1] = DHookGetParamObjectPtrVar(hParams, 2, g_iCMoveData_SideMove, ObjectValueType_Float);
+	g_vVel[client][2] = 0.0;
 	DHookGetParamObjectPtrVarVector(hParams, 2, 12, ObjectValueType_Vector, g_vAngles[client]);
 
 	float velocity[3];
-	DHookGetParamObjectPtrVarVector(hParams, 2, 64, ObjectValueType_Vector, velocity);
+	DHookGetParamObjectPtrVarVector(hParams, 2, g_iCMoveData_Velocity, ObjectValueType_Vector, velocity);
 
 	float baseVelocity[3];
 	// basevelocity is not stored in MoveData
 	GetEntPropVector(client, Prop_Data, "m_vecBaseVelocity", baseVelocity);
 
 	float origin[3];
-	DHookGetParamObjectPtrVarVector(hParams, 2, 152, ObjectValueType_Vector, origin);
+	DHookGetParamObjectPtrVarVector(hParams, 2, g_iCMoveData_Origin, ObjectValueType_Vector, origin);
 
 	float nextOrigin[3], mins[3], maxs[3];
 
