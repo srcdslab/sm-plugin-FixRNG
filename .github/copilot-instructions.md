@@ -18,15 +18,12 @@ RNGFix eliminates pseudo-random physics behaviors that can make or break precise
 - **Language**: SourcePawn (.sp files)
 - **Platform**: SourceMod 1.10+ (currently supports CSS, designed for CS:GO compatibility)
 - **Dependencies**: DHooks extension (required), Movement Unlocker (optional for CS:GO sliding)
-- **Build System**: SourceKnight (Docker-based SourceMod compiler)
-- **Build Configuration**: `sourceknight.yaml`
-- **CI/CD**: GitHub Actions using `maxime1907/action-sourceknight@v1`
+- **Build System**: Native GitHub Actions using `spcomp` via `rumblefrog/setup-sp`
+- **Build Configuration**: `.github/workflows/ci.yml`
+- **CI/CD**: GitHub Actions native workflow (`.github/workflows/ci.yml`)
 
 ### Build Commands
 ```bash
-# Build with SourceKnight (if available locally)
-sourceknight build
-
 # Build via CI (automatic on push/PR)
 # See .github/workflows/ci.yml for full pipeline
 ```
@@ -95,7 +92,7 @@ All fixes can be individually disabled via ConVars:
 ### Testing Requirements
 - **No automated tests exist** (movement plugins require server testing)
 - **Manual testing process**:
-  1. Compile plugin with SourceKnight
+  1. Compile plugin with spcomp (via the GitHub Actions CI workflow or locally)
   2. Load on CSS test server with movement maps
   3. Test each fix individually using ConVar toggles
   4. Verify no performance regression with `sm_profiler`
@@ -152,8 +149,8 @@ The plugin exposes an API via `rngfix.inc`:
 
 ### Local Development
 1. Modify source files in `addons/sourcemod/scripting/`
-2. Update `sourceknight.yaml` if adding new dependencies
-3. Build with SourceKnight Docker container
+2. Update `.github/workflows/ci.yml` if adding new dependencies
+3. Build with `spcomp` (e.g. via the GitHub Actions CI workflow)
 4. Test compiled `.smx` files on development server
 
 ### CI/CD Pipeline
