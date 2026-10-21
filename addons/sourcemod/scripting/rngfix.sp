@@ -6,7 +6,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1.4"
+#define PLUGIN_VERSION "1.1.5"
 
 public Plugin myinfo =
 {
@@ -82,7 +82,7 @@ ConVar g_cvJumpImpulse;
 ConVar g_cvAutoBunnyHopping;
 
 Handle g_hPassesTriggerFilters;
-Handle g_hProcessMovementHookPre;
+DynamicHook g_hProcessMovementHookPre;
 Address g_IServerGameEnts;
 Handle g_hMarkEntitiesAsTouching;
 
@@ -93,10 +93,10 @@ int g_iCMoveData_Velocity;
 int g_iCMoveData_Origin;
 
 // API
-Handle g_hOnTriggerDetected;
-Handle g_hOnTriggerStartTouch;
-Handle g_hOnTriggerEndTouch;
-Handle g_hOnTriggerTeleportTouchPost;
+GlobalForward g_hOnTriggerDetected;
+GlobalForward g_hOnTriggerStartTouch;
+GlobalForward g_hOnTriggerEndTouch;
+GlobalForward g_hOnTriggerTeleportTouchPost;
 
 bool g_bIsSurfMap;
 
@@ -128,10 +128,10 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
    g_bLateLoad = late;
    RegPluginLibrary("rngfix");
 
-   g_hOnTriggerDetected = CreateGlobalForward("RNGFix_OnTriggerDetected", ET_Ignore, Param_Cell, Param_String);
-   g_hOnTriggerStartTouch = CreateGlobalForward("RNGFix_OnTriggerStartTouch", ET_Ignore, Param_Cell, Param_Cell);
-   g_hOnTriggerEndTouch = CreateGlobalForward("RNGFix_OnTriggerEndTouch", ET_Ignore, Param_Cell, Param_Cell);
-   g_hOnTriggerTeleportTouchPost = CreateGlobalForward("RNGFix_OnTriggerTeleportTouchPost", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerDetected = new GlobalForward("RNGFix_OnTriggerDetected", ET_Ignore, Param_Cell, Param_String);
+   g_hOnTriggerStartTouch = new GlobalForward("RNGFix_OnTriggerStartTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerEndTouch = new GlobalForward("RNGFix_OnTriggerEndTouch", ET_Ignore, Param_Cell, Param_Cell);
+   g_hOnTriggerTeleportTouchPost = new GlobalForward("RNGFix_OnTriggerTeleportTouchPost", ET_Ignore, Param_Cell, Param_Cell);
 
    return APLRes_Success;
 }
@@ -181,7 +181,7 @@ public void OnPluginStart()
 	g_cvJumpImpulse		 = FindConVar("sv_jump_impulse");
 	g_cvAutoBunnyHopping = FindConVar("sv_autobunnyhopping");
 
-	Handle gamedataConf = LoadGameConfigFile("rngfix.games");
+	GameData gamedataConf = new GameData("rngfix.games");
 	if (gamedataConf == null) SetFailState("Failed to load rngfix gamedata");
 
 	// PassesTriggerFilters
@@ -213,7 +213,7 @@ public void OnPluginStart()
 	char interfaceName[64];
 
 	// ProcessMovement
-	if (!GameConfGetKeyValue(gamedataConf, "IGameMovement", interfaceName, sizeof(interfaceName)))
+	if (!gamedataConf.GetKeyValue("IGameMovement", interfaceName, sizeof(interfaceName)))
 	{
 		SetFailState("Failed to get IGameMovement interface name");
 	}
@@ -223,37 +223,37 @@ public void OnPluginStart()
 		SetFailState("Failed to get IGameMovement pointer");
 	}
 
-	int offset = GameConfGetOffset(gamedataConf, "ProcessMovement");
+	int offset = gamedataConf.GetOffset("ProcessMovement");
 	if (offset == -1) SetFailState("Failed to get ProcessMovement offset");
 
-	g_hProcessMovementHookPre = DHookCreate(offset, HookType_Raw, ReturnType_Void, ThisPointer_Ignore, DHook_ProcessMovementPre);
-	DHookAddParam(g_hProcessMovementHookPre, HookParamType_CBaseEntity);
-	DHookAddParam(g_hProcessMovementHookPre, HookParamType_ObjectPtr);
-	DHookRaw(g_hProcessMovementHookPre, false, IGameMovement);
+	g_hProcessMovementHookPre = new DynamicHook(offset, HookType_Raw, ReturnType_Void, ThisPointer_Ignore);
+	g_hProcessMovementHookPre.AddParam(HookParamType_CBaseEntity);
+	g_hProcessMovementHookPre.AddParam(HookParamType_ObjectPtr);
+	g_hProcessMovementHookPre.HookRaw(Hook_Pre, IGameMovement, DHook_ProcessMovementPre);
 
-	if ((g_iCMoveData_ForwardMove = GameConfGetOffset(gamedataConf, "CMoveData::m_flForwardMove")) == -1)
+	if ((g_iCMoveData_ForwardMove = gamedataConf.GetOffset("CMoveData::m_flForwardMove")) == -1)
 	{
 		SetFailState("Failed to get CMoveData::m_flForwardMove");
 	}
-	if ((g_iCMoveData_SideMove = GameConfGetOffset(gamedataConf, "CMoveData::m_flSideMove")) == -1)
+	if ((g_iCMoveData_SideMove = gamedataConf.GetOffset("CMoveData::m_flSideMove")) == -1)
 	{
 		SetFailState("Failed to get CMoveData::m_flSideMove");
 	}
-	if ((g_iCMoveData_MaxSpeed = GameConfGetOffset(gamedataConf, "CMoveData::m_flMaxSpeed")) == -1)
+	if ((g_iCMoveData_MaxSpeed = gamedataConf.GetOffset("CMoveData::m_flMaxSpeed")) == -1)
 	{
 		SetFailState("Failed to get CMoveData::m_flMaxSpeed");
 	}
-	if ((g_iCMoveData_Velocity = GameConfGetOffset(gamedataConf, "CMoveData::m_vecVelocity")) == -1)
+	if ((g_iCMoveData_Velocity = gamedataConf.GetOffset("CMoveData::m_vecVelocity")) == -1)
 	{
 		SetFailState("Failed to get CMoveData::m_vecVelocity");
 	}
-	if ((g_iCMoveData_Origin = GameConfGetOffset(gamedataConf, "CMoveData::m_vecAbsOrigin")) == -1)
+	if ((g_iCMoveData_Origin = gamedataConf.GetOffset("CMoveData::m_vecAbsOrigin")) == -1)
 	{
 		SetFailState("Failed to get CMoveData::m_vecAbsOrigin");
 	}
 
 	// MarkEntitiesAsTouching
-	if (!GameConfGetKeyValue(gamedataConf, "IServerGameEnts", interfaceName, sizeof(interfaceName)))
+	if (!gamedataConf.GetKeyValue("IServerGameEnts", interfaceName, sizeof(interfaceName)))
 	{
 		SetFailState("Failed to get IServerGameEnts interface name");
 	}
@@ -502,7 +502,7 @@ void CheckJumpButton(int client, float velocity[3])
 	FinishGravity(client, velocity);
 }
 
-void AirAccelerate(int client, float velocity[3], Handle hParams)
+void AirAccelerate(int client, float velocity[3], DHookParam hParams)
 {
 	// This also includes the initial parts of AirMove()
 
@@ -519,7 +519,7 @@ void AirAccelerate(int client, float velocity[3], Handle hParams)
 	for (int i = 0; i < 2; i++)	wishvel[i] = fore[i] * g_vVel[client][0] + side[i] * g_vVel[client][1];
 
 	float wishspeed = NormalizeVector(wishvel, wishdir);
-	float m_flMaxSpeed = DHookGetParamObjectPtrVar(hParams, 2, g_iCMoveData_MaxSpeed, ObjectValueType_Float);
+	float m_flMaxSpeed = hParams.GetObjectVar(2, g_iCMoveData_MaxSpeed, ObjectValueType_Float);
 	if (wishspeed > m_flMaxSpeed && m_flMaxSpeed != 0.0) wishspeed = m_flMaxSpeed;
 
 	if (wishspeed)
@@ -582,7 +582,7 @@ bool CheckWater(int client)
 	return GetEntProp(client, Prop_Data, "m_nWaterLevel") > 1;
 }
 
-void PreventCollision(int client, Handle hParams, const float origin[3], const float collisionPoint[3], const float velocity_tick[3])
+void PreventCollision(int client, DHookParam hParams, const float origin[3], const float collisionPoint[3], const float velocity_tick[3])
 {
 	DebugLaser(client, origin, collisionPoint, 15.0, 0.5, g_color1);
 
@@ -598,7 +598,7 @@ void PreventCollision(int client, Handle hParams, const float origin[3], const f
 
 	// Since the MoveData for this tick has already been filled and is about to be used, we need
 	// to modify it directly instead of changing the player entity's actual position (such as with TeleportEntity).
-	DHookSetParamObjectPtrVarVector(hParams, 2, g_iCMoveData_Origin, ObjectValueType_Vector, newOrigin);
+	hParams.SetObjectVarVector(2, g_iCMoveData_Origin, ObjectValueType_Vector, newOrigin);
 
 	DebugLaser(client, origin, newOrigin, 15.0, 0.5, g_color2);
 
@@ -646,9 +646,9 @@ void SetVelocity(int client, float velocity[3], bool dontUseTeleportEntity = fal
 	}
 }
 
-public MRESReturn DHook_ProcessMovementPre(Handle hParams)
+public MRESReturn DHook_ProcessMovementPre(DHookParam hParams)
 {
-	int client = DHookGetParam(hParams, 1);
+	int client = hParams.Get(1);
 
 	if (!IsClientInGame(client))
 		return MRES_Ignored;
@@ -668,7 +668,7 @@ public MRESReturn DHook_ProcessMovementPre(Handle hParams)
 	return MRES_Ignored;
 }
 
-void RunPreTickChecks(int client, Handle hParams)
+void RunPreTickChecks(int client, DHookParam hParams)
 {
 	// Recreate enough of CGameMovement::ProcessMovement to predict if fixes are needed.
 	// We only really care about a limited set of scenarios (less than waist-deep in water, MOVETYPE_WALK, air movement).
@@ -684,22 +684,22 @@ void RunPreTickChecks(int client, Handle hParams)
 
 	g_iLastTickPredicted[client] = g_iTick[client];
 
-	g_iButtons[client] = DHookGetParamObjectPtrVar(hParams, 2, 36, ObjectValueType_Int);
-	g_iOldButtons[client] = DHookGetParamObjectPtrVar(hParams, 2, 40, ObjectValueType_Int);
-	g_vVel[client][0] = DHookGetParamObjectPtrVar(hParams, 2, g_iCMoveData_ForwardMove, ObjectValueType_Float);
-	g_vVel[client][1] = DHookGetParamObjectPtrVar(hParams, 2, g_iCMoveData_SideMove, ObjectValueType_Float);
+	g_iButtons[client] = hParams.GetObjectVar(2, 36, ObjectValueType_Int);
+	g_iOldButtons[client] = hParams.GetObjectVar(2, 40, ObjectValueType_Int);
+	g_vVel[client][0] = hParams.GetObjectVar(2, g_iCMoveData_ForwardMove, ObjectValueType_Float);
+	g_vVel[client][1] = hParams.GetObjectVar(2, g_iCMoveData_SideMove, ObjectValueType_Float);
 	g_vVel[client][2] = 0.0;
-	DHookGetParamObjectPtrVarVector(hParams, 2, 12, ObjectValueType_Vector, g_vAngles[client]);
+	hParams.GetObjectVarVector(2, 12, ObjectValueType_Vector, g_vAngles[client]);
 
 	float velocity[3];
-	DHookGetParamObjectPtrVarVector(hParams, 2, g_iCMoveData_Velocity, ObjectValueType_Vector, velocity);
+	hParams.GetObjectVarVector(2, g_iCMoveData_Velocity, ObjectValueType_Vector, velocity);
 
 	float baseVelocity[3];
 	// basevelocity is not stored in MoveData
 	GetEntPropVector(client, Prop_Data, "m_vecBaseVelocity", baseVelocity);
 
 	float origin[3];
-	DHookGetParamObjectPtrVarVector(hParams, 2, g_iCMoveData_Origin, ObjectValueType_Vector, origin);
+	hParams.GetObjectVarVector(2, g_iCMoveData_Origin, ObjectValueType_Vector, origin);
 
 	float nextOrigin[3], mins[3], maxs[3];
 
