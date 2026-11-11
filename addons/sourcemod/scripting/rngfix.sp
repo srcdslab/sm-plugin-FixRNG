@@ -35,6 +35,9 @@ float g_flFrameTime[MAXPLAYERS+1];
 
 bool g_bTouchingTrigger[MAXPLAYERS+1][2048];
 
+// Teleport target name -> reference of the last entity found with that name (see NameExists)
+StringMap g_smTargetEntity;
+
 int g_iButtons[MAXPLAYERS+1];
 float g_vVel[MAXPLAYERS+1][3];
 float g_vAngles[MAXPLAYERS+1][3];
@@ -138,6 +141,8 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
+	g_smTargetEntity = new StringMap();
+
 	EngineVersion engine = GetEngineVersion();
 
 	if (engine != Engine_CSS)
@@ -296,6 +301,8 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
+	g_smTargetEntity.Clear();
+
 	g_iLaserIndex = PrecacheModel("materials/sprites/laserbeam.vmt", true);
 
 	char map[PLATFORM_MAX_PATH];
@@ -356,15 +363,34 @@ bool NameExists(const char[] targetname)
 
 	char targetname2[128];
 
+	// This runs on every tick a player touches a trigger_teleport, and a mass teleport touches it
+	// with every player in the same tick: check the entity found last time before walking all edicts.
+	// Teleport destinations rarely change, so the walk below only runs again when that entity is gone
+	// or renamed, or when no entity has the name.
+	int ref;
+	if (g_smTargetEntity.GetValue(targetname, ref))
+	{
+		int entity = EntRefToEntIndex(ref);
+		if (entity != INVALID_ENT_REFERENCE
+			&& GetEntPropString(entity, Prop_Data, "m_iName", targetname2, sizeof(targetname2)) != 0
+			&& StrEqual(targetname, targetname2))
+			return true;
+	}
+
 	int max = GetMaxEntities();
 	for (int entity = 1; entity < max; entity++)
 	{
 		if (!IsValidEntity(entity)) continue;
 		if (GetEntPropString(entity, Prop_Data, "m_iName", targetname2, sizeof(targetname2)) == 0) continue;
 
-		if (StrEqual(targetname, targetname2)) return true;
+		if (StrEqual(targetname, targetname2))
+		{
+			g_smTargetEntity.SetValue(targetname, EntIndexToEntRef(entity));
+			return true;
+		}
 	}
 
+	g_smTargetEntity.Remove(targetname);
 	return false;
 }
 
