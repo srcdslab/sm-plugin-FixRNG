@@ -6,7 +6,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1.7"
+#define PLUGIN_VERSION "1.1.8"
 
 public Plugin myinfo =
 {
@@ -210,7 +210,13 @@ public void OnPluginStart()
 	}
 	PrepSDKCall_AddParameter(SDKType_String, SDKPass_Pointer);
 	PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Pointer, VDECODE_FLAG_ALLOWNULL);
+#if SOURCEMOD_V_MINOR >= 13
+	// A pointer does not fit in a cell on x64: SM 1.13 returns it through an Address (int64) argument
+	PrepSDKCall_SetReturnInfo(SDKType_Address, SDKPass_Plain);
+#else
+	// SM 1.12 has no SDKType_Address: the pointer is returned in a cell, which only works on 32-bit servers
 	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+#endif
 	Handle CreateInterface = EndPrepSDKCall();
 
 	if (CreateInterface == null) SetFailState("Unable to prepare SDKCall for CreateInterface");
@@ -222,8 +228,8 @@ public void OnPluginStart()
 	{
 		SetFailState("Failed to get IGameMovement interface name");
 	}
-	Address IGameMovement = SDKCall(CreateInterface, interfaceName, 0);
-	if (!IGameMovement)
+	Address IGameMovement = GetInterface(CreateInterface, interfaceName);
+	if (IGameMovement == Address_Null)
 	{
 		SetFailState("Failed to get IGameMovement pointer");
 	}
@@ -262,8 +268,8 @@ public void OnPluginStart()
 	{
 		SetFailState("Failed to get IServerGameEnts interface name");
 	}
-	g_IServerGameEnts = SDKCall(CreateInterface, interfaceName, 0);
-	if (!g_IServerGameEnts)
+	g_IServerGameEnts = GetInterface(CreateInterface, interfaceName);
+	if (g_IServerGameEnts == Address_Null)
 	{
 		SetFailState("Failed to get IServerGameEnts pointer");
 	}
@@ -297,6 +303,18 @@ public void OnPluginStart()
 			HookTrigger(entity, classname);
 		}
 	}
+}
+
+// Calls CreateInterface(name, NULL) and returns the interface pointer
+Address GetInterface(Handle createInterface, const char[] name)
+{
+#if SOURCEMOD_V_MINOR >= 13
+	Address pInterface = Address_Null;
+	SDKCall(createInterface, pInterface, name, 0);
+	return pInterface;
+#else
+	return SDKCall(createInterface, name, 0);
+#endif
 }
 
 public void OnMapStart()

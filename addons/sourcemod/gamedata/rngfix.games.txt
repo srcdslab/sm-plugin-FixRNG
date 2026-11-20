@@ -15,7 +15,9 @@
 			{
 				"library"		"server"
 				"windows"		"@CreateInterface"
+				"windows64"		"@CreateInterface"
 				"linux"			"@CreateInterface"
+				"linux64"		"@CreateInterface"
 			}
 		}
 
@@ -24,7 +26,9 @@
 			"ProcessMovement"
 			{
 				"windows"		"1"
+				"windows64"		"1"
 				"linux"			"2"
+				"linux64"		"2"
 			}
 		}
 	}
