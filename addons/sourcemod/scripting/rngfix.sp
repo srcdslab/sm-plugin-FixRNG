@@ -6,7 +6,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-#define PLUGIN_VERSION "1.1.6"
+#define PLUGIN_VERSION "1.1.7"
 
 public Plugin myinfo =
 {
@@ -301,7 +301,8 @@ public void OnPluginStart()
 
 public void OnMapStart()
 {
-	g_smTargetEntity.Clear();
+	delete g_smTargetEntity;
+	g_smTargetEntity = new StringMap();
 
 	g_iLaserIndex = PrecacheModel("materials/sprites/laserbeam.vmt", true);
 
